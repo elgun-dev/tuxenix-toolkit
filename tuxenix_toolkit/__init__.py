@@ -1,0 +1,3 @@
+"""Tuxenix package and VM helper tools."""
+
+__version__ = "0.1.0"

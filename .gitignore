@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.html
+*.mmd
+systemd-report.md
+build-dashboard.html
+package-explorer.html
