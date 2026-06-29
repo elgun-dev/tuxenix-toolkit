@@ -1,6 +1,7 @@
 # Tuxenix Toolkit
 
-Practical tooling for Tuxenix package work, dependency analysis, build visibility, and QEMU boot testing.
+Practical tooling for Tuxenix package work, dependency analysis, build
+visibility, installer ISO creation, and QEMU boot testing.
 
 This repo turns the day-to-day distro work into reusable tools:
 
@@ -10,6 +11,7 @@ This repo turns the day-to-day distro work into reusable tools:
 - build dashboard HTML report
 - root filesystem installer script generator
 - bootable installer ISO builder
+- download/install guide for the current home-lab mirror
 - QEMU command helper
 - LFS/Tuxenix boot lab notes
 
@@ -134,10 +136,15 @@ Builds a GRUB-bootable Tuxenix installer ISO:
 ./tuxenix-toolkit iso
 ```
 
-The ISO contains a small live initramfs, the generated rootfs installer script,
-the Tuxenix kernel, and a static `txpk` repo under `/repo/1-lts`. See
-[docs/download.md](docs/download.md) for the current download, laptop install,
-home-lab package mirror, and milestone notes.
+The current ISO is a stage-1 installer image. It is a real bootable ISO that can
+be written to USB with Rufus, `dd`, or Balena Etcher. It contains a small live
+initramfs, the generated rootfs installer script, the Tuxenix kernel, and the
+base package repo needed for the install shell/rootfs path.
+
+The full compiled package set is currently served from the home-lab HTTP mirror
+after the installed system boots. See [docs/download.md](docs/download.md) for
+the ISO URL, package mirror layout, laptop install steps, and public download
+plan.
 
 ### VM Helper
 
@@ -152,4 +159,8 @@ Prints known-good commands for the current Tuxenix QEMU image:
 
 ## Status
 
-First working cut. The tools are intentionally simple and use only the Python standard library so they can run in a minimal development environment.
+Working milestone: Tuxenix now boots from a generated installer ISO on real
+Lenovo laptop hardware, installs to an existing partition, and can pull the
+compiled package set from the home-lab repo server. The tools are intentionally
+simple and use only the Python standard library so they can run in a minimal
+development environment.

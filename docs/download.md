@@ -1,27 +1,41 @@
 # Tuxenix Download And Install Guide
 
-This guide records the first laptop-bootable Tuxenix ISO milestone and the
-current LAN package mirror workflow.
+This guide records the first laptop-bootable Tuxenix ISO milestone, the current
+home-lab package mirror workflow, and the remaining work needed before the ISO
+is a polished public download.
 
 Current status:
 
 - ISO boots on a Lenovo laptop in UEFI mode.
-- Installer media contains an offline package repo for the base system.
-- Home-lab HTTP mirror serves the full compiled package repo.
+- The ISO is a real bootable image that can be flashed with Rufus, `dd`, or
+  Balena Etcher.
+- The current ISO is a stage-1 installer: it boots into the Tuxenix installer
+  shell and can install the base/rootfs flow.
+- The full compiled package set is served by the home-lab HTTP mirror after the
+  installed system boots.
 - Package repo currently has 425 package names and 429 package archives.
+- Public download is not finished yet. The `192.168.1.80` URLs only work on the
+  local LAN until a Cloudflare Tunnel, Tailscale Funnel, GitHub Release, or
+  object storage mirror is added.
 
 ## Download
 
-Current home-lab mirror:
+Current home-lab mirror, LAN only:
 
 ```text
 http://192.168.1.80:8088/
 ```
 
-Current installer ISO:
+Current installer ISO, versioned:
 
 ```text
 http://192.168.1.80:8088/iso/tuxenix-installer-2026-06-29.iso
+```
+
+Current installer ISO, stable latest link:
+
+```text
+http://192.168.1.80:8088/iso/tuxenix-installer-latest.iso
 ```
 
 Checksum:
@@ -78,6 +92,10 @@ sync
 Boot the laptop from the USB. The installer drops to a root shell and mounts
 the ISO at `/run/iso`.
 
+For Windows, download `tuxenix-installer-latest.iso`, open Rufus, select the
+USB drive, select the ISO, and write it in ISO/DD mode. Rufus should use the
+whole USB drive, not an existing partition on the USB.
+
 ## Install To An Existing Partition
 
 This is the known-good flow used for the laptop install. It assumes the root
@@ -129,7 +147,9 @@ sudo blkid /dev/nvme0n1p4
 ```
 
 For the first laptop install, `/dev/nvme0n1p4` appeared as `259:4`, and this
-kernel root form booted successfully:
+kernel root form booted successfully. The `root=259:4` form was used because
+the early boot path did not reliably resolve UUID/device-name root arguments on
+that laptop yet:
 
 ```grub
 menuentry "Tuxenix" {
@@ -149,6 +169,9 @@ sudo grub-mkconfig -o /boot/grub/grub.cfg
 
 For another machine, use the `MAJ:MIN` value shown by `lsblk` for that
 machine's Tuxenix root partition in the `root=` kernel argument.
+
+Future ISO/initramfs work should make `root=UUID=...` reliable so this
+machine-specific `MAJ:MIN` workaround is no longer needed.
 
 ## Configure The Package Repo On The Laptop
 
@@ -194,6 +217,9 @@ Retry failures with:
 while read p; do printf 'y\n' | txpk --install "$p"; done < /tmp/tuxenix-package-install-failed.txt
 ```
 
+If pasting commands directly on the laptop is painful, enable SSH on the laptop
+after networking is up, then run these commands from another machine over SSH.
+
 ## How The ISO Works
 
 The ISO is built by:
@@ -223,6 +249,17 @@ The package repo is static HTTP content. Each directory has an `index.html`
 because the txpk fetcher reads package, version, and archive names from simple
 directory listings. The home-lab mirror is the same structure served by nginx.
 
+The home-lab website root now has a human-readable download page with direct
+links to:
+
+```text
+/iso/tuxenix-installer-latest.iso
+/iso/tuxenix-installer-latest.iso.sha256
+/1-lts/
+/package-list.txt
+/tuxenix-install-all-packages.sh
+```
+
 ## Milestone Notes
 
 The first working laptop ISO required fixes in several places:
@@ -235,14 +272,32 @@ The first working laptop ISO required fixes in several places:
 - Manual partition installs now write `/etc/fstab` from the mounted target root.
 - Target roots get the standard top-level usr-merge symlinks.
 - Minimal root account files are created so a password can be set after install.
+- The home-lab repo now hosts the ISO under `/iso/` as both a versioned file and
+  `tuxenix-installer-latest.iso`.
+- The package helper `tuxenix-install-all-packages.sh` installs every package
+  name listed in `package-list.txt` from the home-lab mirror.
 
 ## Future Public Download Work
 
-The current mirror is LAN-only. Public download should move to one of these:
+The current mirror is LAN-only. A friend outside the house cannot use
+`http://192.168.1.80:8088/`. Public download should move to one of these:
 
 - Cloudflare R2 or another static object host for ISO and package archives.
 - Cloudflare Tunnel in front of the home-lab nginx server.
 - A GitHub release for ISO artifacts plus a separate package mirror.
+
+Fast temporary public option, run on the server:
+
+```sh
+cloudflared tunnel --url http://localhost:8088
+```
+
+That prints a `https://...trycloudflare.com` URL. With the current layout, the
+friend-facing ISO URL would be:
+
+```text
+https://THE-TUNNEL.trycloudflare.com/iso/tuxenix-installer-latest.iso
+```
 
 The public mirror should keep the same layout:
 
