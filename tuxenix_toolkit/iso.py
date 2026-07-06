@@ -20,7 +20,7 @@ from .packages import Package
 ISO_LABEL = "TUXENIX_ISO"
 ISO_REPO_ROOT = Path("/run/iso/repo/1-lts")
 
-LIVE_PACKAGES: tuple[str, ...] = (
+SHELL_LIVE_PACKAGES: tuple[str, ...] = (
     "glibc",
     "bash",
     "coreutils",
@@ -73,6 +73,31 @@ LIVE_PACKAGES: tuple[str, ...] = (
     "vim",
 )
 
+CALAMARES_LIVE_PACKAGES: tuple[str, ...] = (
+    *SHELL_LIVE_PACKAGES,
+    "dbus",
+    "fontconfig",
+    "fonts-liberation",
+    "libinput",
+    "mesa",
+    "networkmanager",
+    "xauth",
+    "xinit",
+    "xkeyboard-config",
+    "xmessage",
+    "xorg-server",
+    "xterm",
+    "xf86-input-libinput",
+    "icewm",
+    "calamares",
+    "tuxenix-calamares-config",
+)
+
+LIVE_PACKAGE_SETS: dict[str, tuple[str, ...]] = {
+    "shell": SHELL_LIVE_PACKAGES,
+    "calamares": CALAMARES_LIVE_PACKAGES,
+}
+
 
 @dataclass(frozen=True)
 class IsoBuildResult:
@@ -81,6 +106,7 @@ class IsoBuildResult:
     staging_dir: Path
     installer_entries: int
     live_entries: int
+    installer_ui: str
 
 
 def _run(args: list[str], cwd: Path | None = None) -> None:
@@ -101,7 +127,7 @@ def _package_entries(
         if name in visited:
             return
         if name in visiting:
-            raise ValueError(f"dependency cycle includes {name}")
+            return
         package = packages.get(name)
         if package is None:
             raise ValueError(f"missing package recipe: {name}")
@@ -146,9 +172,27 @@ def _link_or_copy(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
-def _write_init(root: Path) -> None:
+def _write_init(root: Path, installer_ui: str) -> None:
     init = root / "init"
-    init.write_text("""#!/usr/bin/bash
+    calamares_autostart = ""
+    if installer_ui == "calamares":
+        calamares_autostart = """
+if [ -x /usr/bin/localedef ] && [ ! -e /usr/lib/locale/C.UTF-8 ]; then
+    mkdir -p /usr/lib/locale
+    /usr/bin/localedef -i en_US -f UTF-8 C.UTF-8 2>/dev/null || true
+fi
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+
+if [ -x /usr/bin/startx ]; then
+    echo "Starting Tuxenix graphical installer session..."
+    /usr/bin/startx /usr/local/bin/tuxenix-calamares-session -- :0 vt1 || true
+    echo
+    echo "Graphical installer exited or failed. Dropping to installer shell."
+fi
+"""
+
+    text = """#!/usr/bin/bash
 set -eu
 
 export PATH=/usr/bin:/usr/sbin:/bin:/sbin
@@ -212,13 +256,75 @@ echo "  /run/iso/tuxenix-install-rootfs.sh --help"
 echo "  /run/iso/tuxenix-install-rootfs.sh --partition-mode auto --disk /dev/sda --bootloader ask"
 echo
 echo "Nothing will erase a disk unless you pass --apply-disk-layout."
+__CALAMARES_AUTOSTART__
 echo
 exec /usr/bin/bash -l
-""")
+"""
+    init.write_text(text.replace("__CALAMARES_AUTOSTART__", calamares_autostart.rstrip()))
     init.chmod(0o755)
 
 
-def _prepare_live_root(root: Path, entries: tuple[InstallerEntry, ...]) -> None:
+def _write_calamares_session(root: Path) -> None:
+    local_bin = root / "usr/local/bin"
+    local_bin.mkdir(parents=True, exist_ok=True)
+
+    session = local_bin / "tuxenix-calamares-session"
+    session.write_text("""#!/usr/bin/bash
+set -u
+
+export PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export HOME=/root
+export XDG_RUNTIME_DIR=/run
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+
+mkdir -p /run/dbus /root
+dbus-daemon --system --fork 2>/dev/null || true
+
+xsetroot -solid '#263238' 2>/dev/null || true
+
+if [ -x /usr/bin/calamares ] && [ -f /etc/calamares/settings.conf ]; then
+    /usr/bin/calamares &
+else
+    xterm -T "Tuxenix installer" -geometry 96x28+40+60 -e /usr/local/bin/tuxenix-calamares-missing &
+fi
+
+if command -v icewm-session >/dev/null 2>&1; then
+    exec icewm-session
+fi
+
+if command -v icewm >/dev/null 2>&1; then
+    exec icewm
+fi
+
+exec xterm
+""")
+    session.chmod(0o755)
+
+    missing = local_bin / "tuxenix-calamares-missing"
+    missing.write_text("""#!/usr/bin/bash
+cat <<'EOF'
+Tuxenix graphical installer session is running.
+
+Calamares is not ready yet because the live root does not contain:
+
+  /etc/calamares/settings.conf
+
+Build and install the Tuxenix calamares package/config, then rebuild this ISO
+with:
+
+  ./tuxenix-toolkit iso --installer-ui calamares
+
+For the current shell installer, use:
+
+  /run/iso/tuxenix-install-rootfs.sh --help
+EOF
+exec /usr/bin/bash -l
+""")
+    missing.chmod(0o755)
+
+
+def _prepare_live_root(root: Path, entries: tuple[InstallerEntry, ...], installer_ui: str) -> None:
     root.mkdir(parents=True, exist_ok=True)
     for entry in entries:
         _extract_txpk(entry.archive, root)
@@ -244,8 +350,21 @@ def _prepare_live_root(root: Path, entries: tuple[InstallerEntry, ...]) -> None:
     if linux_doc.exists():
         shutil.rmtree(linux_doc)
 
-    _prune_live_root(root)
-    _write_init(root)
+    _prune_live_root(root, keep_python=(installer_ui == "calamares"))
+    if installer_ui == "calamares":
+        _write_calamares_session(root)
+    _make_regular_files_readable(root)
+    _write_init(root, installer_ui)
+
+
+def _make_regular_files_readable(root: Path) -> None:
+    for path in root.rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        mode = path.stat().st_mode & 0o7777
+        if mode & 0o400:
+            continue
+        path.chmod(mode | 0o400)
 
 
 def _remove_path(path: Path) -> None:
@@ -255,28 +374,31 @@ def _remove_path(path: Path) -> None:
         shutil.rmtree(path)
 
 
-def _prune_live_root(root: Path) -> None:
-    for relative in (
+def _prune_live_root(root: Path, keep_python: bool = False) -> None:
+    pruned_directories = [
         "boot",
         "usr/include",
         "usr/lib/gcc",
         "usr/libexec/gcc",
         "usr/lib/perl5",
-        "usr/lib/python3.14",
         "usr/share/doc",
         "usr/share/gdb",
         "usr/share/gettext",
-        "usr/share/i18n",
         "usr/share/info",
         "usr/share/locale",
         "usr/share/man",
         "usr/share/pkgconfig",
-    ):
+    ]
+    if not keep_python:
+        pruned_directories.append("usr/lib/python3.14")
+        pruned_directories.append("usr/share/i18n")
+
+    for relative in pruned_directories:
         path = root / relative
         if path.exists() or path.is_symlink():
             _remove_path(path)
 
-    for pattern in (
+    pruned_patterns = [
         "usr/lib/*.a",
         "usr/lib/*.la",
         "usr/bin/*gcc*",
@@ -301,14 +423,19 @@ def _prune_live_root(root: Path) -> None:
         "usr/bin/meson",
         "usr/bin/ninja",
         "usr/bin/perl*",
-        "usr/bin/python*",
         "usr/bin/x86_64-pc-linux-gnu-*",
         "usr/lib/libbfd-*",
         "usr/lib/libctf*",
         "usr/lib/libgprofng*",
-        "usr/lib/libpython*",
         "usr/lib/libstdc++*.a",
-    ):
+    ]
+    if not keep_python:
+        pruned_patterns.extend([
+            "usr/bin/python*",
+            "usr/lib/libpython*",
+        ])
+
+    for pattern in pruned_patterns:
         for path in root.glob(pattern):
             if path.exists() or path.is_symlink():
                 _remove_path(path)
@@ -316,7 +443,7 @@ def _prune_live_root(root: Path) -> None:
 
 def _write_initramfs(root: Path, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    command = f"find . -print0 | cpio --null -o --format=newc | zstd -19 -T0 -o {output}"
+    command = f"set -o pipefail; find . -print0 | cpio --null -o --format=newc | zstd -19 -T0 -o {output}"
     subprocess.run(["bash", "-lc", command], cwd=root, check=True)
 
 
@@ -374,7 +501,11 @@ def build_iso(
     output: Path,
     work_dir: Path,
     profile: str = "rescue",
+    installer_ui: str = "shell",
 ) -> IsoBuildResult:
+    if installer_ui not in LIVE_PACKAGE_SETS:
+        raise ValueError(f"unknown installer UI: {installer_ui}")
+
     repo_root = repo_root.resolve()
     output = output.resolve()
     work_dir = work_dir.resolve()
@@ -393,8 +524,13 @@ def build_iso(
     if installer_plan.missing_archives:
         raise ValueError("missing package archives: " + ", ".join(installer_plan.missing_archives))
 
-    live_entries = _package_entries(packages, repo_root, LIVE_PACKAGES, resolve_dependencies=False)
-    _prepare_live_root(live_root, live_entries)
+    live_entries = _package_entries(
+        packages,
+        repo_root,
+        LIVE_PACKAGE_SETS[installer_ui],
+        resolve_dependencies=(installer_ui != "shell"),
+    )
+    _prepare_live_root(live_root, live_entries, installer_ui)
 
     kernel = Path.home() / "Projects/pkg-sources/os/1-lts/linux-tuxenix/dist/files/boot/vmlinuz-7.0.11-tuxenix"
     if not kernel.exists():
@@ -424,4 +560,5 @@ def build_iso(
         staging_dir=staging,
         installer_entries=len(installer_plan.entries),
         live_entries=len(live_entries),
+        installer_ui=installer_ui,
     )

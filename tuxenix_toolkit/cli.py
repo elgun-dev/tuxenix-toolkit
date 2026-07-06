@@ -14,7 +14,7 @@ from .installer import (
     describe_plan,
     write_installer_script,
 )
-from .iso import build_iso
+from .iso import LIVE_PACKAGE_SETS, build_iso
 from .lint import lint_packages
 from .packages import DEFAULT_PACKAGE_ROOT, load_packages
 from .vm import vm_command
@@ -61,6 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     iso.add_argument("--repo-root", type=Path, default=Path.home() / "Projects" / "anysolo-test" / "repo" / "1-lts")
     iso.add_argument("--output", type=Path, default=Path.home() / "Projects" / "anysolo-test" / "iso-out" / "tuxenix-installer.iso")
     iso.add_argument("--work-dir", type=Path, default=Path.home() / "Projects" / "anysolo-test" / "iso-out" / "work")
+    iso.add_argument("--installer-ui", choices=sorted(LIVE_PACKAGE_SETS), default="shell")
 
     summary = sub.add_parser("summary", help="print package summary")
     summary.add_argument("--repo-root", type=Path, default=Path.home() / "Projects" / "anysolo-test" / "repo" / "1-lts")
@@ -111,10 +112,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "iso":
-        result = build_iso(packages, args.repo_root, args.output, args.work_dir, args.profile)
+        try:
+            result = build_iso(packages, args.repo_root, args.output, args.work_dir, args.profile, args.installer_ui)
+        except ValueError as error:
+            print(error)
+            return 1
         print(f"wrote {result.iso_path}")
         print(f"initramfs: {result.initramfs_path}")
         print(f"staging: {result.staging_dir}")
+        print(f"installer UI: {result.installer_ui}")
         print(f"installer packages: {result.installer_entries}")
         print(f"live packages: {result.live_entries}")
         return 0

@@ -141,6 +141,20 @@ be written to USB with Rufus, `dd`, or Balena Etcher. It contains a small live
 initramfs, the generated rootfs installer script, the Tuxenix kernel, and the
 base package repo needed for the install shell/rootfs path.
 
+The ISO builder also has a graphical Calamares live-session path:
+
+```sh
+./tuxenix-toolkit iso --installer-ui calamares
+```
+
+That path adds Xorg, `xinit`, IceWM, `xterm`, input/font packages, and
+`calamares` to the live root. On boot it starts a lightweight IceWM session so
+people can see and use the installer without a full desktop environment. The
+Calamares UI starts automatically when the live root contains
+`/etc/calamares/settings.conf`, installed by the `tuxenix-calamares-config`
+package. Until the Tuxenix `calamares` binary package is built, the graphical
+session opens a terminal that points back to the shell installer.
+
 The full compiled package set is currently served from the home-lab HTTP mirror
 after the installed system boots. See [docs/download.md](docs/download.md) for
 the ISO URL, package mirror layout, laptop install steps, and public download

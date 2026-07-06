@@ -9,12 +9,13 @@ Current status:
 - ISO boots on a Lenovo laptop in UEFI mode.
 - The ISO is a real bootable image that can be flashed with Rufus, `dd`, or
   Balena Etcher.
-- The current ISO is a stage-1 installer: it boots into the Tuxenix installer
-  shell and can install the base/rootfs flow.
+- The current graphical ISO boots into a lightweight IceWM live session and
+  starts the Calamares installer.
+- The shell installer ISO remains available as a fallback image.
 - The full compiled package set is served by the home-lab HTTP mirror after the
   installed system boots.
 - Package repo currently has 425 package names and 429 package archives.
-- Public download is not finished yet. The `192.168.1.80` URLs only work on the
+- Public download is not finished yet. The `192.168.1.151` URLs only work on the
   local LAN until a Cloudflare Tunnel, Tailscale Funnel, GitHub Release, or
   object storage mirror is added.
 
@@ -23,37 +24,55 @@ Current status:
 Current home-lab mirror, LAN only:
 
 ```text
-http://192.168.1.80:8088/
+http://192.168.1.151:8088/
 ```
 
-Current installer ISO, versioned:
+Current graphical Calamares ISO, versioned:
 
 ```text
-http://192.168.1.80:8088/iso/tuxenix-installer-2026-06-29.iso
+http://192.168.1.151:8088/iso/tuxenix-calamares-2026-07-06.iso
 ```
 
-Current installer ISO, stable latest link:
+Current graphical Calamares ISO, stable latest link:
 
 ```text
-http://192.168.1.80:8088/iso/tuxenix-installer-latest.iso
+http://192.168.1.151:8088/iso/tuxenix-calamares-latest.iso
+```
+
+Calamares checksum:
+
+```text
+http://192.168.1.151:8088/iso/tuxenix-calamares-2026-07-06.iso.sha256
+```
+
+Shell installer ISO, versioned:
+
+```text
+http://192.168.1.151:8088/iso/tuxenix-installer-2026-06-29.iso
+```
+
+Shell installer ISO, stable latest link:
+
+```text
+http://192.168.1.151:8088/iso/tuxenix-installer-latest.iso
 ```
 
 Checksum:
 
 ```text
-http://192.168.1.80:8088/iso/tuxenix-installer-2026-06-29.iso.sha256
+http://192.168.1.151:8088/iso/tuxenix-installer-2026-06-29.iso.sha256
 ```
 
 Package repository:
 
 ```text
-http://192.168.1.80:8088/1-lts/
+http://192.168.1.151:8088/1-lts/
 ```
 
 Install-all helper:
 
 ```text
-http://192.168.1.80:8088/tuxenix-install-all-packages.sh
+http://192.168.1.151:8088/tuxenix-install-all-packages.sh
 ```
 
 Download from Linux:
@@ -62,13 +81,31 @@ Download from Linux:
 mkdir -p ~/Downloads/tuxenix
 cd ~/Downloads/tuxenix
 
-curl -O http://192.168.1.80:8088/iso/tuxenix-installer-2026-06-29.iso
-curl -O http://192.168.1.80:8088/iso/tuxenix-installer-2026-06-29.iso.sha256
+curl -O http://192.168.1.151:8088/iso/tuxenix-installer-2026-06-29.iso
+curl -O http://192.168.1.151:8088/iso/tuxenix-installer-2026-06-29.iso.sha256
 
 sha256sum -c tuxenix-installer-2026-06-29.iso.sha256
 ```
 
-Expected SHA256:
+Download the graphical Calamares ISO from Linux:
+
+```sh
+mkdir -p ~/Downloads/tuxenix
+cd ~/Downloads/tuxenix
+
+curl -O http://192.168.1.151:8088/iso/tuxenix-calamares-2026-07-06.iso
+curl -O http://192.168.1.151:8088/iso/tuxenix-calamares-2026-07-06.iso.sha256
+
+sha256sum -c tuxenix-calamares-2026-07-06.iso.sha256
+```
+
+Expected Calamares SHA256:
+
+```text
+b40dcbfe2f8899bd23db188bfad510a86d488bf9cfbbd970c8abfc6eff02827d
+```
+
+Expected shell-installer SHA256:
 
 ```text
 1a6edc0051982a3131dc00d873d38c62ba8d36372609536b01e979ecf69c51a1
@@ -89,10 +126,14 @@ sudo dd if=tuxenix-installer-2026-06-29.iso of=/dev/sdX bs=4M status=progress co
 sync
 ```
 
-Boot the laptop from the USB. The installer drops to a root shell and mounts
-the ISO at `/run/iso`.
+For the graphical installer, use `tuxenix-calamares-2026-07-06.iso` in the
+same command.
 
-For Windows, download `tuxenix-installer-latest.iso`, open Rufus, select the
+Boot the laptop from the USB. The Calamares image starts Xorg, IceWM, and the
+graphical installer. The shell image drops to a root shell and mounts the ISO
+at `/run/iso`.
+
+For Windows, download `tuxenix-calamares-latest.iso`, open Rufus, select the
 USB drive, select the ISO, and write it in ISO/DD mode. Rufus should use the
 whole USB drive, not an existing partition on the USB.
 
@@ -182,7 +223,7 @@ mkdir -p /etc/txpk /var/lib/txpk /var/cache/txpk
 
 cat > /etc/txpk/pkg.yml <<'EOF'
 database: "/var/lib/txpk/txpk.db"
-pkgRepoUrl: "http://192.168.1.80:8088"
+pkgRepoUrl: "http://192.168.1.151:8088"
 pkgRepoCachePath: "/var/cache/txpk"
 shareDir: "/usr/share/txpk"
 EOF
@@ -199,7 +240,7 @@ printf 'y\n' | txpk --install htop
 Install the full compiled package set:
 
 ```sh
-curl -fsSLO http://192.168.1.80:8088/tuxenix-install-all-packages.sh
+curl -fsSLO http://192.168.1.151:8088/tuxenix-install-all-packages.sh
 chmod +x tuxenix-install-all-packages.sh
 ./tuxenix-install-all-packages.sh
 ```
@@ -228,6 +269,12 @@ The ISO is built by:
 ./tuxenix-toolkit iso
 ```
 
+The experimental graphical installer ISO is selected explicitly:
+
+```sh
+./tuxenix-toolkit iso --installer-ui calamares
+```
+
 The build creates a GRUB-bootable ISO with these main pieces:
 
 - `/boot/vmlinuz-7.0.11-tuxenix`: Tuxenix kernel.
@@ -239,6 +286,14 @@ The initramfs is a small Tuxenix live root built from package archives. Its
 `/init` script mounts `/dev`, `/proc`, `/sys`, `/run`, and `/tmp`, finds the
 ISO by label `TUXENIX_ISO`, mounts it at `/run/iso`, writes a temporary txpk
 config that points at `file:///run/iso/repo`, and opens an interactive shell.
+
+With `--installer-ui calamares`, the live root also includes Xorg, `xinit`,
+IceWM, `xterm`, input/font packages, Qt, KPMcore, Python runtime pieces, and
+`calamares`. The ISO starts a lightweight IceWM session automatically so users
+can see the installer. Calamares is launched from
+`/usr/local/bin/tuxenix-calamares-session` when `/etc/calamares/settings.conf`
+exists in the live root; that file comes from the
+`tuxenix-calamares-config` package.
 
 The generated installer then installs packages into `/mnt/tuxenix` using txpk
 with a target prefix. It creates the root filesystem directories, top-level
@@ -255,6 +310,8 @@ links to:
 ```text
 /iso/tuxenix-installer-latest.iso
 /iso/tuxenix-installer-latest.iso.sha256
+/iso/tuxenix-calamares-latest.iso
+/iso/tuxenix-calamares-latest.iso.sha256
 /1-lts/
 /package-list.txt
 /tuxenix-install-all-packages.sh
@@ -274,13 +331,15 @@ The first working laptop ISO required fixes in several places:
 - Minimal root account files are created so a password can be set after install.
 - The home-lab repo now hosts the ISO under `/iso/` as both a versioned file and
   `tuxenix-installer-latest.iso`.
+- The home-lab repo also hosts the graphical Calamares ISO as
+  `tuxenix-calamares-2026-07-06.iso` and `tuxenix-calamares-latest.iso`.
 - The package helper `tuxenix-install-all-packages.sh` installs every package
   name listed in `package-list.txt` from the home-lab mirror.
 
 ## Future Public Download Work
 
 The current mirror is LAN-only. A friend outside the house cannot use
-`http://192.168.1.80:8088/`. Public download should move to one of these:
+`http://192.168.1.151:8088/`. Public download should move to one of these:
 
 - Cloudflare R2 or another static object host for ISO and package archives.
 - Cloudflare Tunnel in front of the home-lab nginx server.
@@ -296,7 +355,7 @@ That prints a `https://...trycloudflare.com` URL. With the current layout, the
 friend-facing ISO URL would be:
 
 ```text
-https://THE-TUNNEL.trycloudflare.com/iso/tuxenix-installer-latest.iso
+https://THE-TUNNEL.trycloudflare.com/iso/tuxenix-calamares-latest.iso
 ```
 
 The public mirror should keep the same layout:
@@ -304,6 +363,8 @@ The public mirror should keep the same layout:
 ```text
 /iso/tuxenix-installer-latest.iso
 /iso/tuxenix-installer-latest.iso.sha256
+/iso/tuxenix-calamares-latest.iso
+/iso/tuxenix-calamares-latest.iso.sha256
 /1-lts/
 /package-list.txt
 /tuxenix-install-all-packages.sh
